@@ -1,10 +1,6 @@
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 from app.config import Config
-
-db = SQLAlchemy()
-migrate = Migrate()
+from app.database import db, migrate
 
 def create_app():
     app = Flask(__name__)
@@ -13,7 +9,13 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
 
-    from app.routes import main_bp
-    app.register_blueprint(main_bp)
+    # Impor Blueprint produk dan user
+    from app.routes.products import products_bp
+    from app.routes.users import users_bp
+
+    # Register Blueprint ke aplikasi
+    app.register_blueprint(products_bp)
+    app.register_blueprint(users_bp)
 
     return app
+    
