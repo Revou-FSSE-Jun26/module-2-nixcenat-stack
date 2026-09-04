@@ -10,12 +10,12 @@ main = Blueprint("main", __name__)
 # API
 # =========================
 
-@main.route("/api")
+@main.route("/api", methods=["GET"])
 def api():
     return jsonify({
         "message": "RevoShop API is running",
         "status": "success"
-    })
+    }), 200
 
 
 # =========================
@@ -34,15 +34,14 @@ def products():
 
 @main.route("/products/<int:id>", methods=["GET"])
 def get_product(id):
-    products = Product.query.all()
+    product = Product.query.get(id)
 
-    for product in products:
-        if product.id == id:
-            return jsonify(product.to_dict()), 200
+    if not product:
+        return jsonify({
+            "message": "Product not found"
+        }), 404
 
-    return jsonify({
-        "message": "Product not found"
-    }), 404
+    return jsonify(product.to_dict()), 200
 
 
 @main.route("/products", methods=["POST"])
@@ -54,7 +53,12 @@ def create_product():
             "message": "Request body is required"
         }), 400
 
-    required_fields = ["name", "price", "stock", "category_id"]
+    required_fields = [
+        "name",
+        "price",
+        "stock",
+        "category_id"
+    ]
 
     for field in required_fields:
         if field not in data:
@@ -67,12 +71,26 @@ def create_product():
             "message": "Name must be a non-empty string"
         }), 400
 
-    if data["price"] < 0:
+    try:
+        price = float(data["price"])
+    except (TypeError, ValueError):
+        return jsonify({
+            "message": "Price must be a valid number"
+        }), 400
+
+    if price < 0:
         return jsonify({
             "message": "Price cannot be negative"
         }), 400
 
-    if data["stock"] < 0:
+    try:
+        stock = int(data["stock"])
+    except (TypeError, ValueError):
+        return jsonify({
+            "message": "Stock must be a valid integer"
+        }), 400
+
+    if stock < 0:
         return jsonify({
             "message": "Stock cannot be negative"
         }), 400
@@ -87,9 +105,9 @@ def create_product():
     product = Product(
         name=data["name"].strip(),
         description=data.get("description"),
-        price=data["price"],
-        stock=data["stock"],
-        category_id=data["category_id"]
+        price=price,
+        stock=stock,
+        category_id=category.id
     )
 
     db.session.add(product)
@@ -126,20 +144,34 @@ def update_product(id):
         product.description = data["description"]
 
     if "price" in data:
-        if data["price"] < 0:
+        try:
+            price = float(data["price"])
+        except (TypeError, ValueError):
+            return jsonify({
+                "message": "Price must be a valid number"
+            }), 400
+
+        if price < 0:
             return jsonify({
                 "message": "Price cannot be negative"
             }), 400
 
-        product.price = data["price"]
+        product.price = price
 
     if "stock" in data:
-        if data["stock"] < 0:
+        try:
+            stock = int(data["stock"])
+        except (TypeError, ValueError):
+            return jsonify({
+                "message": "Stock must be a valid integer"
+            }), 400
+
+        if stock < 0:
             return jsonify({
                 "message": "Stock cannot be negative"
             }), 400
 
-        product.stock = data["stock"]
+        product.stock = stock
 
     if "category_id" in data:
         category = Category.query.get(data["category_id"])
@@ -149,7 +181,7 @@ def update_product(id):
                 "message": "Category not found"
             }), 404
 
-        product.category_id = data["category_id"]
+        product.category_id = category.id
 
     db.session.commit()
 
@@ -165,13 +197,10 @@ def delete_product(id):
             "message": "Product not found"
         }), 404
 
-    for order_item in product.order_items:
-        order = order_item.order
-
-        if order.status not in ["completed", "cancelled"]:
-            return jsonify({
-                "message": "Product cannot be deleted because it has an active order"
-            }), 409
+    if product.order_items:
+        return jsonify({
+            "message": "Product cannot be deleted because it belongs to an order"
+        }), 409
 
     db.session.delete(product)
     db.session.commit()
@@ -184,47 +213,6 @@ def delete_product(id):
 # =========================
 # CATEGORIES
 # =========================
-
-@main.route("/categories", methods=["POST"])
-def create_category():
-    data = request.get_json()
-
-    if not data:
-        return jsonify({
-            "message": "Request body is required"
-        }), 400
-
-    if "name" not in data:
-        return jsonify({
-            "message": "name is required"
-        }), 400
-
-    if not isinstance(data["name"], str) or not data["name"].strip():
-        return jsonify({
-            "message": "Name must be a non-empty string"
-        }), 400
-
-    existing_category = Category.query.filter_by(
-        name=data["name"].strip()
-    ).first()
-
-    if existing_category:
-        return jsonify({
-            "message": "Category already exists"
-        }), 409
-
-    category = Category(
-        name=data["name"].strip()
-    )
-
-    db.session.add(category)
-    db.session.commit()
-
-    return jsonify({
-        "id": category.id,
-        "name": category.name
-    }), 201
-
 
 @main.route("/categories", methods=["GET"])
 def categories():
@@ -258,6 +246,47 @@ def get_category(id):
     }), 200
 
 
+@main.route("/categories", methods=["POST"])
+def create_category():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "message": "Request body is required"
+        }), 400
+
+    if "name" not in data:
+        return jsonify({
+            "message": "name is required"
+        }), 400
+
+    if not isinstance(data["name"], str) or not data["name"].strip():
+        return jsonify({
+            "message": "Name must be a non-empty string"
+        }), 400
+
+    name = data["name"].strip()
+
+    existing_category = Category.query.filter_by(
+        name=name
+    ).first()
+
+    if existing_category:
+        return jsonify({
+            "message": "Category already exists"
+        }), 409
+
+    category = Category(name=name)
+
+    db.session.add(category)
+    db.session.commit()
+
+    return jsonify({
+        "id": category.id,
+        "name": category.name
+    }), 201
+
+
 @main.route("/categories/<int:id>", methods=["PUT"])
 def update_category(id):
     category = Category.query.get(id)
@@ -284,8 +313,10 @@ def update_category(id):
             "message": "Name must be a non-empty string"
         }), 400
 
+    name = data["name"].strip()
+
     existing_category = Category.query.filter(
-        Category.name == data["name"].strip(),
+        Category.name == name,
         Category.id != id
     ).first()
 
@@ -294,7 +325,7 @@ def update_category(id):
             "message": "Category already exists"
         }), 409
 
-    category.name = data["name"].strip()
+    category.name = name
 
     db.session.commit()
 
@@ -330,6 +361,21 @@ def delete_category(id):
 # USERS
 # =========================
 
+@main.route("/users", methods=["GET"])
+def users():
+    users = User.query.all()
+
+    return jsonify([
+        {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "created_at": user.created_at.isoformat()
+        }
+        for user in users
+    ]), 200
+
+
 @main.route("/users", methods=["POST"])
 def create_user():
     data = request.get_json()
@@ -339,7 +385,11 @@ def create_user():
             "message": "Request body is required"
         }), 400
 
-    required_fields = ["name", "email", "password"]
+    required_fields = [
+        "name",
+        "email",
+        "password"
+    ]
 
     for field in required_fields:
         if field not in data:
@@ -354,7 +404,7 @@ def create_user():
 
     if not isinstance(data["email"], str) or not data["email"].strip():
         return jsonify({
-            "message": "Email must be a non-empty string"
+            "message": "Email cannot be empty"
         }), 400
 
     if not isinstance(data["password"], str) or len(data["password"]) < 6:
@@ -362,8 +412,10 @@ def create_user():
             "message": "Password must be at least 6 characters"
         }), 400
 
+    email = data["email"].strip().lower()
+
     existing_user = User.query.filter_by(
-        email=data["email"].strip().lower()
+        email=email
     ).first()
 
     if existing_user:
@@ -373,7 +425,7 @@ def create_user():
 
     user = User(
         name=data["name"].strip(),
-        email=data["email"].strip().lower(),
+        email=email,
         password=generate_password_hash(data["password"])
     )
 
@@ -386,21 +438,6 @@ def create_user():
         "email": user.email,
         "created_at": user.created_at.isoformat()
     }), 201
-
-
-@main.route("/users", methods=["GET"])
-def users():
-    users = User.query.all()
-
-    return jsonify([
-        {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "created_at": user.created_at.isoformat()
-        }
-        for user in users
-    ]), 200
 
 
 # =========================
@@ -421,11 +458,18 @@ def login():
             "message": "Email and password are required"
         }), 400
 
+    email = data["email"].strip().lower()
+
     user = User.query.filter_by(
-        email=data["email"].strip().lower()
+        email=email
     ).first()
 
-    if not user or not check_password_hash(
+    if not user:
+        return jsonify({
+            "message": "Invalid email or password"
+        }), 401
+
+    if not check_password_hash(
         user.password,
         data["password"]
     ):
@@ -544,7 +588,15 @@ def create_order():
         "user_id": order.user_id,
         "total": float(order.total),
         "status": order.status,
-        "created_at": order.created_at.isoformat()
+        "created_at": order.created_at.isoformat(),
+        "items": [
+            {
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "price": float(item.price)
+            }
+            for item in order.order_items
+        ]
     }), 201
 
 
@@ -553,7 +605,9 @@ def orders():
     user_id = request.args.get("user_id", type=int)
 
     if user_id:
-        orders = Order.query.filter_by(user_id=user_id).all()
+        orders = Order.query.filter_by(
+            user_id=user_id
+        ).all()
     else:
         orders = Order.query.all()
 
