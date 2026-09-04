@@ -41,6 +41,16 @@ class Product(db.Model):
     category = db.relationship("Category", back_populates="products")
     order_items = db.relationship("OrderItem", back_populates="product")
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "price": float(self.price),
+            "stock": self.stock,
+            "category_id": self.category_id
+        }
+
 
 class Order(db.Model):
     __tablename__ = "orders"
